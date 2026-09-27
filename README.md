@@ -8,7 +8,8 @@ Each relay has its own topic and accepts `on`, `off` or `toggle`. Any MQTT clien
 (`mosquitto_pub`, Home Assistant, an AI agent shelling out, ...).
 
 All relays are driven **off** at boot, before WiFi even starts, and stay off until a command
-arrives. Losing the broker never changes relay state.
+arrives. Losing the broker or WiFi never changes relay state: the device retries WiFi every 5s
+and reconnects/resubscribes to MQTT on its own. Commands sent while it's offline are lost.
 
 ## Prerequisites
 

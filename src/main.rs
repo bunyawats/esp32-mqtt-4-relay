@@ -35,6 +35,10 @@ const RELAY_COUNT: usize = 4;
 const RELAY_ACTIVE_HIGH: bool = true;
 const HEARTBEAT_SECS: u64 = 30;
 const SUBSCRIBE_RETRY_MS: u64 = 500;
+const WIFI_CHECK_SECS: u64 = 5;
+/// `connect()`/`wait_netif_up()` log errors with Debug formatting; the default pthread stack
+/// (3 KiB) is too tight for that.
+const WIFI_WATCHDOG_STACK: usize = 8 * 1024;
 
 #[derive(Clone, Copy, Debug)]
 enum Action {
@@ -131,9 +135,36 @@ fn main() -> anyhow::Result<()> {
     }))?;
 
     wifi.start()?;
-    wifi.connect()?;
-    wifi.wait_netif_up()?;
-    log::info!("WiFi connected");
+    match connect_wifi(&mut wifi) {
+        Ok(()) => log::info!("WiFi connected"),
+        Err(e) => log::warn!("WiFi connect failed at boot: {e:?}, watchdog will retry"),
+    }
+
+    // --- WiFi watchdog thread: owns `wifi` from here on. esp-idf-svc doesn't reconnect the
+    // station on its own, so after a router reboot or AP dropout this retries every
+    // WIFI_CHECK_SECS until the interface is back up. Relay state is untouched. The MQTT client
+    // reconnects by itself once the network returns, and the subscriber thread resubscribes. ---
+    thread::Builder::new()
+        .stack_size(WIFI_WATCHDOG_STACK)
+        .spawn(move || {
+            let mut down = false;
+            loop {
+                if !wifi.is_up().unwrap_or(false) {
+                    if !down {
+                        log::warn!("WiFi down, reconnecting...");
+                        down = true;
+                    }
+                    match connect_wifi(&mut wifi) {
+                        Ok(()) => {
+                            log::info!("WiFi reconnected");
+                            down = false;
+                        }
+                        Err(e) => log::warn!("WiFi reconnect failed: {e:?}"),
+                    }
+                }
+                thread::sleep(Duration::from_secs(WIFI_CHECK_SECS));
+            }
+        })?;
 
     // --- Shared state ---
     // `relay_bits`: bitmask of energized relays (bit 0 = relay 1). Written only by the main
@@ -293,9 +324,17 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Unreachable in practice (the drainer thread holds `cmd_tx` forever); keep WiFi alive
-    // until here regardless.
-    drop(wifi);
+    // Unreachable in practice (the drainer thread holds `cmd_tx` forever).
+    Ok(())
+}
+
+/// Brings the station up: associates with the AP if needed, then waits for an IP. Each step
+/// times out after ~15s inside esp-idf-svc.
+fn connect_wifi(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<()> {
+    if !wifi.is_connected()? {
+        wifi.connect()?;
+    }
+    wifi.wait_netif_up()?;
     Ok(())
 }
 

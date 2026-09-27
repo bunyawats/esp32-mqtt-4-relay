@@ -53,5 +53,8 @@ The section name `[esp32-mqtt-relay]` must match the crate name. `topic_status` 
 - **Subscriber thread** polls `subscribed` and retries `subscribe("<prefix>/+")` every 500ms while
   it is false. That covers both boot and resubscribing after a reconnect (clean session). Don't
   gate subscribe on a `Connected` event; that has been seen to hang.
+- **WiFi watchdog thread** owns the `BlockingWifi` after boot. esp-idf-svc doesn't reconnect the
+  station by itself, so every 5s it checks `is_up()` and reconnects if needed. It never touches the relays.
+  A failed connect at boot is logged and left to the watchdog instead of aborting `main`.
 - **Status-publisher thread** is the only caller of `publish()`. Every status goes through
   `status_tx`, including the 30s heartbeat.
