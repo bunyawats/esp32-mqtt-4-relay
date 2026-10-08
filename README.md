@@ -1,4 +1,4 @@
-# esp32-mqtt-relay
+   # esp32-mqtt-relay
 
 ESP32 firmware (Rust, `esp-idf-svc` std stack) for a 2-channel ESP32 relay board ("ESP32 Relay
 X2"), controlled over MQTT. See [HARDWARE.md](HARDWARE.md) for the board, its GPIO map, the
@@ -93,6 +93,42 @@ mosquitto_sub -h your-broker-host.local -t esp32/relay_status
 `heartbeat`, `connected`, and `rejected_invalid_relay`). Reasons are `switch_on`, `switch_off`,
 `switch_toggle`, `connected`, `heartbeat`, `rejected_invalid_relay` (a topic like
 `esp32/relay/3`), and `rejected_invalid_command` (a payload other than `on|off|toggle`).
+
+### Testing on the board
+
+On the broker host itself, `-h localhost` works. Watch status in one terminal:
+
+```bash
+mosquitto_sub -h your-broker-host.local -t esp32/relay_status -v
+```
+
+Then, in another terminal, switch each relay and listen for the click:
+
+```bash
+mosquitto_pub -h your-broker-host.local -t esp32/relay/1 -m on       # relay 1 (outermost) on
+mosquitto_pub -h your-broker-host.local -t esp32/relay/1 -m off
+mosquitto_pub -h your-broker-host.local -t esp32/relay/2 -m on       # relay 2 on
+mosquitto_pub -h your-broker-host.local -t esp32/relay/2 -m off
+mosquitto_pub -h your-broker-host.local -t esp32/relay/1 -m toggle
+```
+
+Check that bad input is rejected:
+
+```bash
+mosquitto_pub -h your-broker-host.local -t esp32/relay/3 -m on       # rejected_invalid_relay
+mosquitto_pub -h your-broker-host.local -t esp32/relay/1 -m blah     # rejected_invalid_command
+```
+
+Or cycle both relays, 5 s on each (works in bash and zsh):
+
+```bash
+for relay in 1 2; do
+  echo ">> $(date +%H:%M:%S) relay $relay on"
+  mosquitto_pub -h your-broker-host.local -t esp32/relay/$relay -m on;  sleep 5
+  echo ">> $(date +%H:%M:%S) relay $relay off"
+  mosquitto_pub -h your-broker-host.local -t esp32/relay/$relay -m off; sleep 4
+done
+```
 
 ## Notes / next steps
 
