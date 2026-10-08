@@ -47,9 +47,17 @@ non-ESP32 chip (C3/S3/...), change `target` and `MCU` there.
    ```
 
    `cfg.toml` is gitignored and is compiled into the firmware, so any change needs a rebuild
-   and reflash. Prefer a `.local` mDNS hostname for `mqtt_url` over a literal IP so a DHCP
-   change on the broker host doesn't break the device. `topic_status` must not sit under
-   `topic_relay_prefix/`, or the device would receive its own status messages.
+   and reflash. `topic_status` must not sit under `topic_relay_prefix/`, or the device would
+   receive its own status messages.
+
+   **Use the broker host's `.local` mDNS hostname in `mqtt_url`, not its IP.** A router restart
+   can give the broker host a new DHCP address, which silently breaks a hardcoded IP until you
+   rebuild and reflash. ESP-IDF's lwIP resolves `.local` names with a one-shot mDNS query on
+   every connect and reconnect (`CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES`, on by default), so a
+   hostname keeps working with no firmware change. On a Mac broker host, the name is
+   `$(scutil --get LocalHostName).local`. This needs mDNS multicast to reach the ESP32 over
+   your WiFi. If it doesn't on some network, give the broker host a static DHCP reservation
+   instead.
 
 2. **Relay pins.** `src/main.rs` drives relays 1–2 on GPIO16 and GPIO17, active-high. For a
    different board, change `RELAY_COUNT`, the pin list and `RELAY_ACTIVE_HIGH`; `pin_probe`
