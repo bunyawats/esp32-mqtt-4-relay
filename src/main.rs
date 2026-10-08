@@ -29,9 +29,8 @@ pub struct Config {
 }
 
 // --- Firmware behavior constants ---
-const RELAY_COUNT: usize = 4;
-/// Most ESP32 relay boards drive the relay transistor directly (GPIO high = relay energized).
-/// Set to false for opto-isolated boards whose relays energize on GPIO low.
+const RELAY_COUNT: usize = 2;
+/// The ESP32 X2 relay board drives each relay transistor directly (GPIO high = relay energized).
 const RELAY_ACTIVE_HIGH: bool = true;
 const HEARTBEAT_SECS: u64 = 30;
 const SUBSCRIBE_RETRY_MS: u64 = 500;
@@ -105,14 +104,11 @@ fn main() -> anyhow::Result<()> {
     let peripherals = Peripherals::take()?;
 
     // --- Relays: driven to "off" before anything else (WiFi can take seconds) so a load never
-    // floats in an undefined state during boot. Relay N is `relays[N - 1]`.
-    // TODO: these pins are placeholders (the common "ESP32 Relay X4" layout) — confirm against
-    // the actual board's silkscreen/schematic before connecting real loads. ---
+    // floats in an undefined state during boot. Relay N is `relays[N - 1]`. GPIO16/17 were
+    // found with `pin_probe` (see HARDWARE.md). ---
     let mut relays: [PinDriver<'_, Output>; RELAY_COUNT] = [
-        PinDriver::output(peripherals.pins.gpio32)?,
-        PinDriver::output(peripherals.pins.gpio33)?,
-        PinDriver::output(peripherals.pins.gpio25)?,
-        PinDriver::output(peripherals.pins.gpio26)?,
+        PinDriver::output(peripherals.pins.gpio16)?,
+        PinDriver::output(peripherals.pins.gpio17)?,
     ];
     for pin in relays.iter_mut() {
         set_relay(pin, false)?;
@@ -348,8 +344,8 @@ fn set_relay(pin: &mut PinDriver<'_, Output>, on: bool) -> anyhow::Result<()> {
 }
 
 /// Publishes a small JSON status payload, e.g.
-/// {"relays":["on","off","off","off"],"relay":1,"reason":"switch_on"} or
-/// {"relays":["on","off","off","off"],"relay":null,"reason":"heartbeat"}.
+/// {"relays":["on","off"],"relay":1,"reason":"switch_on"} or
+/// {"relays":["on","off"],"relay":null,"reason":"heartbeat"}.
 fn publish_status(client: &Mutex<EspMqttClient<'_>>, topic_status: &str, status: &Status) {
     let relays = (0..RELAY_COUNT)
         .map(|i| if status.relays & (1 << i) != 0 { r#""on""# } else { r#""off""# })

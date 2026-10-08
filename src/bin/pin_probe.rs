@@ -1,6 +1,6 @@
 //! Relay pin probe: finds which GPIO drives each relay on a board whose pinout isn't documented.
 //!
-//! Cycles through every GPIO that's safe to drive on an ESP32-WROOM-32U, one at a time: drives it
+//! Cycles through every GPIO that's safe to drive on an ESP32-WROOM-32E, one at a time: drives it
 //! HIGH, then LOW, then releases it (back to a floating input), logging each phase over serial.
 //! Watch/listen for a relay click (and its indicator LED) and match it to the logged phase:
 //!   - relay turns on during the HIGH phase => that relay is active-high on that GPIO
@@ -16,7 +16,7 @@
 use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::gpio::{AnyOutputPin, PinDriver};
 
-/// Output-capable GPIOs that are safe to drive after boot on a WROOM-32U. Excluded:
+/// Output-capable GPIOs that are safe to drive after boot on a WROOM-32E. Excluded:
 ///   0      — wired to the DOWNLOAD button; driving it while pressed shorts the pin
 ///   1, 3   — UART0 TX/RX, needed for this probe's serial log
 ///   6..=11 — internal SPI flash; touching them crashes the chip

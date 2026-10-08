@@ -1,8 +1,10 @@
 # esp32-mqtt-relay
 
-ESP32 firmware (Rust, `esp-idf-svc` std stack) for the DIYmall ESP32S 4-channel relay module
-(FZ2707U), controlled over MQTT. See [HARDWARE.md](HARDWARE.md) for board specs, the flashing
-procedure, and how to back up the stock firmware.
+ESP32 firmware (Rust, `esp-idf-svc` std stack) for a 2-channel ESP32 relay board ("ESP32 Relay
+X2"), controlled over MQTT. See [HARDWARE.md](HARDWARE.md) for the board, its GPIO map, the
+flashing procedure, and the stock firmware backup. The
+[ESPHome device page](https://devices.esphome.io/devices/esp32-relay-x2/) is a good reference for
+the board itself.
 
 Each relay has its own topic and accepts `on`, `off` or `toggle`. Any MQTT client works
 (`mosquitto_pub`, Home Assistant, an AI agent shelling out, ...).
@@ -16,13 +18,14 @@ and reconnects/resubscribes to MQTT on its own. Commands sent while it's offline
 ```bash
 cargo install espup
 espup install
+espup install --toolchain-version 1.98.1.0 --name esp-1.98 --targets esp32
 . $HOME/export-esp.sh   # every new shell
 
 cargo install espflash ldproxy
 ```
 
-`rust-toolchain.toml` and `.cargo/config.toml` pin the `esp` toolchain and the
-`xtensa-esp32-espidf` target, so `cargo build` targets the ESP32 out of the box. For a
+`rust-toolchain.toml` pins the `esp-1.98` toolchain (the 1.99.0.0 esp release can't build `std`
+for ESP-IDF), and `.cargo/config.toml` pins the `xtensa-esp32-espidf` target, so `cargo build` targets the ESP32 out of the box. For a
 non-ESP32 chip (C3/S3/...), change `target` and `MCU` there.
 
 ## Setup
@@ -48,27 +51,29 @@ non-ESP32 chip (C3/S3/...), change `target` and `MCU` there.
    change on the broker host doesn't break the device. `topic_status` must not sit under
    `topic_relay_prefix/`, or the device would receive its own status messages.
 
-2. **Check the relay pins.** `src/main.rs` currently uses GPIO32, 33, 25, 26 for relays 1–4
-   (the common "ESP32 Relay X4" layout) as placeholders. Confirm them against your board, and set
-   `RELAY_ACTIVE_HIGH = false` if your relays energize on a low GPIO (typical on
-   opto-isolated boards).
+2. **Relay pins.** `src/main.rs` drives relays 1–2 on GPIO16 and GPIO17, active-high. For a
+   different board, change `RELAY_COUNT`, the pin list and `RELAY_ACTIVE_HIGH`; `pin_probe`
+   (see HARDWARE.md) finds the pins.
 
 ## Build & flash
 
 ```bash
 cargo build --release
-# board has no USB/auto-reset: wire a USB-TTL adapter, hold DOWNLOAD + tap RESET first
-espflash flash -p <port> target/xtensa-esp32-espidf/release/esp32-mqtt-relay
-# then tap RESET, and:
-espflash monitor -p <port>
+# board has no USB/auto-reset: wire a USB-TTL adapter, hold IO0 + tap EN first
+espflash flash -p <port> --before no-reset --after no-reset \
+  target/xtensa-esp32-espidf/release/esp32-mqtt-relay
+# then power-cycle the board (no buttons), and:
+espflash monitor -p <port> --before no-reset
 ```
+
+Some USB-TTL adapters can't flash with espflash at all. HARDWARE.md has the esptool workaround.
 
 ## Usage
 
 ```bash
 mosquitto_pub -h your-broker-host.local -t esp32/relay/1 -m on
-mosquitto_pub -h your-broker-host.local -t esp32/relay/3 -m off
-mosquitto_pub -h your-broker-host.local -t esp32/relay/4 -m toggle
+mosquitto_pub -h your-broker-host.local -t esp32/relay/2 -m off
+mosquitto_pub -h your-broker-host.local -t esp32/relay/1 -m toggle
 ```
 
 Watch status. It's published after every command or rejection, on each (re)subscribe to the
@@ -79,15 +84,15 @@ mosquitto_sub -h your-broker-host.local -t esp32/relay_status
 ```
 
 ```json
-{"relays":["on","off","off","off"],"relay":1,"reason":"switch_on"}
-{"relays":["on","off","off","off"],"relay":null,"reason":"heartbeat"}
-{"relays":["on","off","off","off"],"relay":2,"reason":"rejected_invalid_command"}
+{"relays":["on","off"],"relay":1,"reason":"switch_on"}
+{"relays":["on","off"],"relay":null,"reason":"heartbeat"}
+{"relays":["on","off"],"relay":2,"reason":"rejected_invalid_command"}
 ```
 
 `relays[i]` is the state of relay `i+1`. `relay` is the relay the event was about (`null` for
 `heartbeat`, `connected`, and `rejected_invalid_relay`). Reasons are `switch_on`, `switch_off`,
 `switch_toggle`, `connected`, `heartbeat`, `rejected_invalid_relay` (a topic like
-`esp32/relay/7`), and `rejected_invalid_command` (a payload other than `on|off|toggle`).
+`esp32/relay/3`), and `rejected_invalid_command` (a payload other than `on|off|toggle`).
 
 ## Notes / next steps
 

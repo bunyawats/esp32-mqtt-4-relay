@@ -3,3 +3,6 @@ cfg.toml
 /.embuild
 .idea/
 .DS_Store
+
+# Backup of the board's factory firmware (vendor binary, not ours to publish)
+stock-firmware.bin
